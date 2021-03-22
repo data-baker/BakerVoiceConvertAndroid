@@ -1,0 +1,3 @@
+include ':voiceconvert'
+include ':app'
+rootProject.name = "BakerVoiceConvertAndroid"
