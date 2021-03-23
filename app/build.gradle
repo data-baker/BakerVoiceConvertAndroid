@@ -16,10 +16,20 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        release {
+            storeFile file('dbvc.jks')
+            storePassword "HPm2kLKI80OkSLQm"
+            keyAlias "dbvc"
+            keyPassword "HPm2kLKI80OkSLQm"
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
     }
     compileOptions {
@@ -29,15 +39,19 @@ android {
 }
 
 dependencies {
-
+    implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
     implementation 'androidx.appcompat:appcompat:1.2.0'
     implementation 'com.google.android.material:material:1.2.1'
     implementation 'androidx.constraintlayout:constraintlayout:2.0.4'
-    implementation project(path: ':voiceconvert')
+//    implementation project(path: ':voiceconvert')
     testImplementation 'junit:junit:4.+'
     androidTestImplementation 'androidx.test.ext:junit:1.1.2'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.3.0'
 
     implementation 'com.jaredrummler:material-spinner:1.3.1'
+
     implementation 'com.squareup.okhttp3:okhttp:4.8.0'
+    implementation 'com.google.code.gson:gson:2.8.6'
+    implementation 'androidx.core:core:1.3.2'
+
 }
