@@ -68,6 +68,7 @@ public class MainActivity extends AppCompatActivity {
             finish();
         } else {
             ProgressDialog dialog = ProgressDialog.show(this, "正在授权", "授权中...");
+            dialog.setCancelable(false);
             VoiceConvertManager.getInstance().auth(getApplicationContext(),
                     clientId,
                     clientSecret, new AuthCallback() {
@@ -140,26 +141,22 @@ public class MainActivity extends AppCompatActivity {
                             @Override
                             public void canSpeech() {
                                 isRecording = true;
-                                runOnUiThread(() -> {
-                                            Toast.makeText(MainActivity.this, "请开始说话", Toast.LENGTH_SHORT).show();
-                                            btnRecord.setText("停止录音");
-                                            btnRecord.setEnabled(true);
-                                        }
-                                );
+                                Toast.makeText(MainActivity.this, "请开始说话", Toast.LENGTH_SHORT).show();
+                                btnRecord.setText("停止录音");
+                                btnRecord.setEnabled(true);
                             }
                         });
                     } else {
                         //自行实现录音然后往SDK中发送音频数据
                         btnRecord.setText("开始录音");
-                        VoiceConvertManager.getInstance().setUseCustomAudioData(true);
                         VoiceConvertManager.getInstance().setWebSocketOnOpen(new WebSocketOpenCallback() {
                             @Override
                             public void onResult(boolean result) {
                                 if (result) {
+                                    btnRecord.setText("停止录音");
                                     new Thread(new Runnable() {
                                         @Override
                                         public void run() {
-                                            runOnUiThread(() -> btnRecord.setText("停止录音"));
                                             startRecord();
                                         }
                                     }).start();

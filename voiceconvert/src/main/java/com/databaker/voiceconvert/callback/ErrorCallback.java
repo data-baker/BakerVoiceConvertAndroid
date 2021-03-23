@@ -4,6 +4,7 @@ public interface ErrorCallback {
 
     /**
      * 错误回调
+     * 主线程回调
      *
      * @param errorCode    错误码
      * @param errorMessage 错误信息

@@ -204,15 +204,8 @@ public class VoiceConvertManager implements VoiceConvertInterface {
     }
 
     @Override
-    public void setUseCustomAudioData(boolean bool) {
-        enableUseCustomAudioData = bool;
-    }
-
-    @Override
     public void setWebSocketOnOpen(WebSocketOpenCallback openCallback) {
-        if (!enableUseCustomAudioData) {
-            throw new IllegalStateException("请先调用 setReadFile 方法设置为读取文件流的方式，否则不能使用该方法。");
-        }
+        enableUseCustomAudioData = true;
         startWebSocket(openCallback, null);
     }
 
@@ -259,9 +252,14 @@ public class VoiceConvertManager implements VoiceConvertInterface {
                         @Override
                         public void run() {
                             if (enableUseCustomAudioData) {
-                                if (openCallback != null) {
-                                    openCallback.onResult(false);
-                                }
+                                new Handler(Looper.getMainLooper()).post(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        if (openCallback != null) {
+                                            openCallback.onResult(false);
+                                        }
+                                    }
+                                });
                             }
                         }
                     });
@@ -270,15 +268,25 @@ public class VoiceConvertManager implements VoiceConvertInterface {
                 @Override
                 public void onOpen(@NotNull WebSocket webSocket, @NotNull Response response) {
                     if (enableUseCustomAudioData) {
-                        if (openCallback != null) {
-                            openCallback.onResult(true);
-                        }
+                        new Handler(Looper.getMainLooper()).post(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (openCallback != null) {
+                                    openCallback.onResult(true);
+                                }
+                            }
+                        });
                     } else {
                         new Thread(new Runnable() {
                             @Override
                             public void run() {
                                 if (mFilePath.isEmpty()) {
-                                    speechCallback.canSpeech(); // 可以说话
+                                    new Handler(Looper.getMainLooper()).post(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            speechCallback.canSpeech(); // 可以说话
+                                        }
+                                    });
                                     isRecording = true;
                                     int bufferSizeInBytes = AudioRecord.getMinBufferSize(SAMPLE_RATE,
                                             AudioFormat.CHANNEL_IN_MONO,
@@ -360,11 +368,6 @@ public class VoiceConvertManager implements VoiceConvertInterface {
             onError(ERROR_NO_TOKEN, "无token，请先调用auth()方法进行鉴权", "");
             return;
         }
-
-        if (!enableUseCustomAudioData) {
-            throw new IllegalStateException("请先调用 setReadFile 方法设置为读取文件流的方式，否则不能使用该方法。");
-        }
-
         if (mWebSocket == null) {
             throw new IllegalStateException("webSocket is null,请先调用 setWebSocketOnOpen 方法建立连接");
         }
@@ -372,7 +375,7 @@ public class VoiceConvertManager implements VoiceConvertInterface {
         if (mToken.isEmpty()) {
             throw new RuntimeException("请先调用 auth 方法授权");
         }
-
+        enableUseCustomAudioData = true;
         packageAudioSend(byteArray, isLast);
     }
 

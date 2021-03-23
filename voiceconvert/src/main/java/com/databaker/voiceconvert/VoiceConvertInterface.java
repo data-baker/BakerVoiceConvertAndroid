@@ -53,12 +53,6 @@ public interface VoiceConvertInterface {
      */
     void stopRecord();
 
-    /**
-     * 设置使用自定义音频数据
-     *
-     * @param bool
-     */
-    void setUseCustomAudioData(boolean bool);
 
     /**
      * 设置websocket的onOpen方法回调，只有返回结果成功后才能调用 sendAudio 方法
