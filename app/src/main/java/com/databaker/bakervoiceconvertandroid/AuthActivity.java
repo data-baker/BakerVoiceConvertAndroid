@@ -64,6 +64,8 @@ public class AuthActivity extends AppCompatActivity {
                                     startActivity(new Intent(AuthActivity.this, MainActivity.class));
                                     finish();
                                 } else {
+                                    btnAuth.setEnabled(true);
+                                    btnAuth.setText("校验");
                                     Toast.makeText(AuthActivity.this, "鉴权失败", Toast.LENGTH_SHORT).show();
                                 }
                             }
