@@ -302,7 +302,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startRecord() {
-        Utils.log("开始录音");
+        Utils.log("Demo开始录音");
         isRecording = true;
         int bufferSizeInBytes = AudioRecord.getMinBufferSize(SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
@@ -318,6 +318,8 @@ public class MainActivity extends AppCompatActivity {
             audioRecord.read(tempArray, 0, tempArray.length);
             VoiceConvertManager.getInstance().sendAudio(tempArray, false);
         }
+        audioRecord.stop();
+        Utils.log("Demo录音结束");
         VoiceConvertManager.getInstance().sendAudio(new byte[]{}, true);
     }
 }

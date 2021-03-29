@@ -39,6 +39,7 @@ import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
+import okhttp3.internal.Util;
 import okio.BufferedSink;
 import okio.BufferedSource;
 import okio.ByteString;
@@ -297,7 +298,7 @@ public class VoiceConvertManager implements VoiceConvertInterface {
                                             AudioFormat.ENCODING_PCM_16BIT,
                                             bufferSizeInBytes * 2);
                                     audioRecord.startRecording();
-
+                                    Utils.log("SDK 开始录音");
                                     try {
                                         if (!mRecordPCMFilePath.isEmpty()) {
                                             File file = new File(mRecordPCMFilePath);
@@ -323,6 +324,9 @@ public class VoiceConvertManager implements VoiceConvertInterface {
                                         }
                                     } catch (Exception e) {
                                         e.printStackTrace();
+                                    } finally {
+                                        Utils.log("SDK 录音结束");
+                                        audioRecord.stop();
                                     }
                                 } else {
                                     isRecording = true;
