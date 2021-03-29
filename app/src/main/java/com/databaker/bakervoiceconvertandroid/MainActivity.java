@@ -35,6 +35,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 
+import okhttp3.internal.Util;
 import okio.BufferedSink;
 import okio.BufferedSource;
 import okio.Okio;
@@ -59,6 +60,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+
+        Utils.isPrintLog = false;
 
         String clientId = getSharedPreferences(AuthActivity.SP_NAME, MODE_PRIVATE).getString(AuthActivity.CLIENT_ID, "");
         String clientSecret = getSharedPreferences(AuthActivity.SP_NAME, MODE_PRIVATE).getString(AuthActivity.CLIENT_SECRET, "");
