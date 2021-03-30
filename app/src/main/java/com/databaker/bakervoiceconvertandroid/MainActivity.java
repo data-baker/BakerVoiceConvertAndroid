@@ -22,6 +22,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 
+import com.blankj.utilcode.util.NetworkUtils;
 import com.databaker.voiceconvert.VoiceConvertManager;
 import com.databaker.voiceconvert.callback.AudioOutPutCallback;
 import com.databaker.voiceconvert.callback.AuthCallback;
@@ -84,6 +85,7 @@ public class MainActivity extends AppCompatActivity {
                                 dialog.dismiss();
                                 initView();
                             } else {
+                                Utils.log("asdfasdf" + Thread.currentThread().getName());
                                 Toast.makeText(MainActivity.this, "鉴权失败", Toast.LENGTH_SHORT).show();
                                 startActivity(new Intent(MainActivity.this, AuthActivity.class));
                                 finish();
@@ -123,74 +125,115 @@ public class MainActivity extends AppCompatActivity {
         btnRecord.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (btnRecord.getText().equals("停止播放")) {
-                    audioTrack.stop();
-                    audioTrack.release();
-                    audioTrack = null;
-                    btnRecord.setText("开始录音");
-                    btnFileRecord.setEnabled(true);
-                    return;
-                }
 
-                if (!isRecording) {
-
-
-                    btnFileRecord.setEnabled(false);
-
-                    if (!isUseCustomAudioData) {
-                        VoiceConvertManager.getInstance().setSaveRecordFile();
-                        btnRecord.setEnabled(false);
-                        btnRecord.setText("正在连接服务器...");
-                        VoiceConvertManager.getInstance().startRecord(new SpeechCallback() {
-                            @Override
-                            public void canSpeech() {
-                                isRecording = true;
-                                Toast.makeText(MainActivity.this, "请开始说话", Toast.LENGTH_SHORT).show();
-                                btnRecord.setText("停止录音");
-                                btnRecord.setEnabled(true);
-                            }
-                        });
-                    } else {
-                        //自行实现录音然后往SDK中发送音频数据
-                        btnRecord.setText("开始录音");
-                        VoiceConvertManager.getInstance().setWebSocketOnOpen(new WebSocketOpenCallback() {
-                            @Override
-                            public void onResult(boolean result) {
-                                if (result) {
-                                    btnRecord.setText("停止录音");
-                                    new Thread(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            startRecord();
-                                        }
-                                    }).start();
-                                } else {
-                                    Toast.makeText(MainActivity.this, "建立webSocket连接失败", Toast.LENGTH_SHORT).show();
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!NetworkUtils.isAvailable()) {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    Toast.makeText(MainActivity.this, "网络异常，请检查网络", Toast.LENGTH_SHORT).show();
                                 }
+                            });
+                            return;
+                        }
+
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (btnRecord.getText().equals("停止播放")) {
+                                    audioTrack.stop();
+                                    audioTrack.release();
+                                    audioTrack = null;
+                                    btnRecord.setText("开始录音");
+                                    btnFileRecord.setEnabled(true);
+                                    return;
+                                }
+
+                                if (!isRecording) {
+
+                                    btnFileRecord.setEnabled(false);
+
+                                    if (!isUseCustomAudioData) {
+                                        VoiceConvertManager.getInstance().setSaveRecordFile();
+                                        btnRecord.setEnabled(false);
+                                        btnRecord.setText("正在连接服务器...");
+                                        VoiceConvertManager.getInstance().startRecord(new SpeechCallback() {
+                                            @Override
+                                            public void canSpeech() {
+                                                isRecording = true;
+                                                Toast.makeText(MainActivity.this, "请开始说话", Toast.LENGTH_SHORT).show();
+                                                btnRecord.setText("停止录音");
+                                                btnRecord.setEnabled(true);
+                                            }
+                                        });
+                                    } else {
+                                        //自行实现录音然后往SDK中发送音频数据
+                                        btnRecord.setText("开始录音");
+                                        VoiceConvertManager.getInstance().setWebSocketOnOpen(new WebSocketOpenCallback() {
+                                            @Override
+                                            public void onResult(boolean result) {
+                                                if (result) {
+                                                    btnRecord.setText("停止录音");
+                                                    new Thread(new Runnable() {
+                                                        @Override
+                                                        public void run() {
+                                                            startRecord();
+                                                        }
+                                                    }).start();
+                                                } else {
+                                                    Toast.makeText(MainActivity.this, "建立webSocket连接失败", Toast.LENGTH_SHORT).show();
+                                                }
+                                            }
+                                        });
+                                    }
+
+
+                                } else {
+                                    isRecording = false;
+                                    VoiceConvertManager.getInstance().stopRecord();
+                                    runOnUiThread(() -> {
+                                        btnRecord.setEnabled(false);
+                                        btnRecord.setText("正在转换，请稍等");
+                                    });
+                                }
+
+
                             }
                         });
                     }
+                }).start();
 
 
-                } else {
-                    isRecording = false;
-                    VoiceConvertManager.getInstance().stopRecord();
-                    runOnUiThread(() -> {
-                        btnRecord.setEnabled(false);
-                        btnRecord.setText("正在转换，请稍等");
-                    });
-                }
             }
         });
 
         btnFileRecord.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                btnRecord.setEnabled(false);
-                btnFileRecord.setEnabled(false);
                 new Thread(new Runnable() {
                     @Override
                     public void run() {
+
+                        if (!NetworkUtils.isAvailable()) {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    Toast.makeText(MainActivity.this, "网络异常，请检查网络", Toast.LENGTH_SHORT).show();
+                                }
+                            });
+                            return;
+                        }
+
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                btnRecord.setEnabled(false);
+                                btnFileRecord.setEnabled(false);
+                            }
+                        });
+
                         try {
                             //复制assets文件到内存卡
                             File outputFile = new File(getExternalFilesDir("").getAbsolutePath() + File.separator + "file.pcm");

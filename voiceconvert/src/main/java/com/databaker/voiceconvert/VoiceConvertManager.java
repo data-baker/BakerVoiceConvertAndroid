@@ -100,7 +100,12 @@ public class VoiceConvertManager implements VoiceConvertInterface {
             @Override
             public void onFailure(@NotNull Call call, @NotNull IOException e) {
                 e.printStackTrace();
-                callback.onResult(false);
+                new Handler(Looper.getMainLooper()).post(new Runnable() {
+                    @Override
+                    public void run() {
+                        callback.onResult(false);
+                    }
+                });
             }
 
             @Override

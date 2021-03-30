@@ -13,6 +13,7 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
+import com.blankj.utilcode.util.NetworkUtils;
 import com.databaker.voiceconvert.VoiceConvertManager;
 import com.databaker.voiceconvert.callback.AuthCallback;
 import com.databaker.voiceconvert.util.Utils;
@@ -27,7 +28,7 @@ public class AuthActivity extends AppCompatActivity {
 
     private static final int PERMISSION_REQ_CODE = 100;
 
-    private String[] PERMISSION_ARRAY = new String[]{Manifest.permission.RECORD_AUDIO};
+    private final String[] PERMISSION_ARRAY = new String[]{Manifest.permission.RECORD_AUDIO};
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -39,37 +40,66 @@ public class AuthActivity extends AppCompatActivity {
 
         EditText etClientId = findViewById(R.id.etClientId);
         EditText etClientSecret = findViewById(R.id.etClientSecret);
+
+        String clientId = getSharedPreferences(SP_NAME, MODE_PRIVATE).getString(CLIENT_ID, "");
+        String clientSecret = getSharedPreferences(SP_NAME, MODE_PRIVATE).getString(CLIENT_SECRET, "");
+
+        etClientId.setText(clientId);
+        etClientSecret.setText(clientSecret);
+
         Button btnAuth = findViewById(R.id.btnAuthorization);
         btnAuth.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                String clientId = etClientId.getText().toString();
-                String clientSecret = etClientSecret.getText().toString();
-
-                if (clientId.isEmpty() || clientSecret.isEmpty()) {
-                    Toast.makeText(AuthActivity.this, "请填写完整", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-
-                btnAuth.setEnabled(false);
-                btnAuth.setText("正在授权...");
-                VoiceConvertManager.getInstance().auth(getApplicationContext(),
-                        clientId,
-                        clientSecret, new AuthCallback() {
-                            @Override
-                            public void onResult(boolean result) {
-                                if (result) {
-                                    getSharedPreferences(SP_NAME, MODE_PRIVATE).edit().putString(CLIENT_ID, clientId).apply();
-                                    getSharedPreferences(SP_NAME, MODE_PRIVATE).edit().putString(CLIENT_SECRET, clientSecret).apply();
-                                    startActivity(new Intent(AuthActivity.this, MainActivity.class));
-                                    finish();
-                                } else {
-                                    btnAuth.setEnabled(true);
-                                    btnAuth.setText("校验");
-                                    Toast.makeText(AuthActivity.this, "鉴权失败", Toast.LENGTH_SHORT).show();
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!NetworkUtils.isAvailable()) {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    Toast.makeText(AuthActivity.this, "网络异常，请检查网络", Toast.LENGTH_SHORT).show();
                                 }
+                            });
+                            return;
+                        }
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                String clientId = etClientId.getText().toString();
+                                String clientSecret = etClientSecret.getText().toString();
+
+                                if (clientId.isEmpty() || clientSecret.isEmpty()) {
+                                    Toast.makeText(AuthActivity.this, "请填写完整", Toast.LENGTH_SHORT).show();
+                                    return;
+                                }
+
+                                btnAuth.setEnabled(false);
+                                btnAuth.setText("正在授权...");
+                                VoiceConvertManager.getInstance().auth(getApplicationContext(),
+                                        clientId,
+                                        clientSecret, new AuthCallback() {
+                                            @Override
+                                            public void onResult(boolean result) {
+                                                if (result) {
+                                                    getSharedPreferences(SP_NAME, MODE_PRIVATE).edit().putString(CLIENT_ID, clientId).apply();
+                                                    getSharedPreferences(SP_NAME, MODE_PRIVATE).edit().putString(CLIENT_SECRET, clientSecret).apply();
+                                                    startActivity(new Intent(AuthActivity.this, MainActivity.class));
+                                                    finish();
+                                                } else {
+                                                    btnAuth.setEnabled(true);
+                                                    btnAuth.setText("校验");
+                                                    Toast.makeText(AuthActivity.this, "鉴权失败", Toast.LENGTH_SHORT).show();
+                                                }
+                                            }
+                                        });
                             }
                         });
+
+                    }
+                }).start();
+
+
             }
         });
 
