@@ -8,10 +8,10 @@ import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
 
 import androidx.core.app.ActivityCompat;
 
+import com.baker.sdk.http.WebSocketClient;
 import com.databaker.voiceconvert.bean.AudioReq;
 import com.databaker.voiceconvert.bean.AudioResp;
 import com.databaker.voiceconvert.bean.AuthResp;
@@ -28,7 +28,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Arrays;
 
@@ -39,7 +38,6 @@ import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
-import okhttp3.internal.Util;
 import okio.BufferedSink;
 import okio.BufferedSource;
 import okio.ByteString;
@@ -61,11 +59,13 @@ public class VoiceConvertManager implements VoiceConvertInterface {
     private boolean isRecording = false;
 
     private Context mContext = null;
-    private WebSocket mWebSocket = null;
+    private WebSocketClient webSocketClient;
     private ErrorCallback mErrorCallback;
     private AudioOutPutCallback audioOutPutCallback;
     private String mFilePath = ""; // 文件识别路径
     private String mRecordPCMFilePath = ""; // 文件识别路径
+    private WebSocketOpenCallback openCallback;
+    private SpeechCallback speechCallback;
 
     private VoiceConvertManager() {
 
@@ -78,7 +78,6 @@ public class VoiceConvertManager implements VoiceConvertInterface {
     public static VoiceConvertInterface getInstance() {
         return Singleton.INSTANCE;
     }
-
 
     @Override
     public void auth(@NotNull Context context, @NotNull String clientId, @NotNull String clientSecret, AuthCallback callback) {
@@ -145,7 +144,6 @@ public class VoiceConvertManager implements VoiceConvertInterface {
             }
         });
     }
-
 
     @Override
     public void setVoiceName(String voiceName) {
@@ -215,161 +213,167 @@ public class VoiceConvertManager implements VoiceConvertInterface {
         startWebSocket(openCallback, null);
     }
 
-    private void startWebSocket(WebSocketOpenCallback openCallback, SpeechCallback speechCallback) {
-        if (mWebSocket == null) {
-            OkHttpClient okHttpClient = new OkHttpClient();
-            Request request = new Request.Builder().url("wss://openapi.data-baker.com/ws/voice_conversion").build();
-            mWebSocket = okHttpClient.newWebSocket(request, new WebSocketListener() {
-                @Override
-                public void onMessage(@NotNull WebSocket webSocket, @NotNull ByteString bytes) {
-                    try {
-                        byte[] resultByteArray = bytes.toByteArray();
-                        byte[] prefixArray = Arrays.copyOfRange(resultByteArray, 0, 4);
-                        int length = (prefixArray[0] << 24) + (prefixArray[1] << 16) + (prefixArray[2] << 8) + prefixArray[3];
-                        if (length > 0) {
-                            byte[] jsonArray = Arrays.copyOfRange(resultByteArray, 4, 4 + length);
-                            byte[] audioArray = Arrays.copyOfRange(resultByteArray, 4 + length, resultByteArray.length);
-                            String jsonStr = new String(jsonArray);
-                            AudioResp audioResp = new Gson().fromJson(jsonStr, AudioResp.class);
-                            if (audioResp.getErrcode() == 0) {
-                                if (audioResp.isLastpkg()) {
-                                    audioOutPutCallback.onAudioOutput(audioArray, true, audioResp.getTraceid());
-//                                    webSocket.close(1000, "正常关闭");
-                                    mWebSocket = null;
-                                } else {
-                                    audioOutPutCallback.onAudioOutput(audioArray, false, audioResp.getTraceid());
-                                }
-                            } else {
-                                onError(audioResp.getErrcode() + "", audioResp.getErrmsg(), audioResp.getTraceid());
-                            }
-                        } else {
-                            onError(ERROR_WEB_SOCKET, "解析JSON长度出错", "");
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        onError(ERROR_WEB_SOCKET, "非法异常" + e.getMessage(), "");
-                    }
-                }
+    private void startWebSocket(WebSocketOpenCallback openCB, SpeechCallback speechCB) {
+        openCallback = openCB;
+        speechCallback = speechCB;
 
-                @Override
-                public void onFailure(@NotNull WebSocket webSocket, @NotNull Throwable t, @Nullable Response response) {
-                    onError(ERROR_WEB_SOCKET, t.getMessage(), "");
-                    new Handler(Looper.getMainLooper()).post(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (enableUseCustomAudioData) {
-                                new Handler(Looper.getMainLooper()).post(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        if (openCallback != null) {
-                                            openCallback.onResult(false);
-                                        }
-                                    }
-                                });
-                            }
-                        }
-                    });
-                }
+        if (webSocketClient == null) {
+            webSocketClient = new WebSocketClient("wss://openapi.data-baker.com/ws/voice_conversion");
+        }
+        webSocketClient.start(webSocketListener);
+    }
 
-                @Override
-                public void onOpen(@NotNull WebSocket webSocket, @NotNull Response response) {
-                    if (enableUseCustomAudioData) {
-                        new Handler(Looper.getMainLooper()).post(new Runnable() {
-                            @Override
-                            public void run() {
-                                if (openCallback != null) {
-                                    openCallback.onResult(true);
-                                }
-                            }
-                        });
-                    } else {
-                        new Thread(new Runnable() {
-                            @Override
-                            public void run() {
-                                if (mFilePath.isEmpty()) {
-                                    new Handler(Looper.getMainLooper()).post(new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            speechCallback.canSpeech(); // 可以说话
-                                        }
-                                    });
-                                    isRecording = true;
-                                    int bufferSizeInBytes = AudioRecord.getMinBufferSize(SAMPLE_RATE,
-                                            AudioFormat.CHANNEL_IN_MONO,
-                                            AudioFormat.ENCODING_PCM_16BIT);
-                                    AudioRecord audioRecord = new AudioRecord(MediaRecorder.AudioSource.DEFAULT,
-                                            SAMPLE_RATE,
-                                            AudioFormat.CHANNEL_IN_MONO,
-                                            AudioFormat.ENCODING_PCM_16BIT,
-                                            bufferSizeInBytes * 2);
-                                    audioRecord.startRecording();
-                                    Utils.log("SDK 开始录音");
-                                    try {
-                                        if (!mRecordPCMFilePath.isEmpty()) {
-                                            File file = new File(mRecordPCMFilePath);
-                                            if (file.exists()) {
-                                                file.delete();
-                                            }
-                                            BufferedSink bufferedSink = Okio.buffer(Okio.sink(file));
-                                            while (isRecording) {
-                                                byte[] tempArray = new byte[5120];
-                                                audioRecord.read(tempArray, 0, tempArray.length);
-                                                packageAudioSend(tempArray, false);
-                                                bufferedSink.write(tempArray);
-                                            }
-                                            bufferedSink.close();
-                                            packageAudioSend(new byte[]{}, true);
-                                        } else {
-                                            while (isRecording) {
-                                                byte[] tempArray = new byte[5120];
-                                                audioRecord.read(tempArray, 0, tempArray.length);
-                                                packageAudioSend(tempArray, false);
-                                            }
-                                            packageAudioSend(new byte[]{}, true);
-                                        }
-                                    } catch (Exception e) {
-                                        e.printStackTrace();
-                                    } finally {
-                                        Utils.log("SDK 录音结束");
-                                        audioRecord.stop();
-                                    }
-                                } else {
-                                    isRecording = true;
-                                    try {
-                                        File file = new File(mFilePath);
-                                        BufferedSource bufferedSource = Okio.buffer(Okio.source(file));
-                                        byte[] readByteArray = bufferedSource.readByteArray();
-                                        int numbs = readByteArray.length / 5120;
-                                        int remainder = readByteArray.length % 5120;
-                                        for (int i = 0; i < numbs; i++) {
-                                            if (!isRecording) {
-                                                packageAudioSend(new byte[]{}, true);
-                                                return;
-                                            }
-                                            byte[] copyOfRange = Arrays.copyOfRange(readByteArray, i * 5120, (i + 1) * 5120);
-                                            if (i == numbs - 1) {
-                                                packageAudioSend(copyOfRange, remainder == 0);
-                                            } else {
-                                                packageAudioSend(copyOfRange, false);
-                                            }
-                                        }
-                                        if (remainder != 0) {
-                                            byte[] endArray = Arrays.copyOfRange(readByteArray, numbs * 5120, readByteArray.length);
-                                            packageAudioSend(endArray, true);
-                                        }
-                                    } catch (IOException e) {
-                                        e.printStackTrace();
-                                        onError(ERROR_READ_FILE, "读文件异常" + e.getMessage(), "");
+    private WebSocketListener webSocketListener = new WebSocketListener() {
+        @Override
+        public void onFailure(@NotNull WebSocket webSocket, @NotNull Throwable t, @Nullable Response response) {
+            if (webSocketClient != null && webSocketClient.getCancelSocket() != null
+                    && !webSocket.equals(webSocketClient.getCancelSocket())) {
+                onError(ERROR_WEB_SOCKET, t.getMessage(), "");
+                new Handler(Looper.getMainLooper()).post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (enableUseCustomAudioData) {
+                            new Handler(Looper.getMainLooper()).post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (openCallback != null) {
+                                        openCallback.onResult(false);
                                     }
                                 }
-                            }
-                        }).start();
+                            });
+                        }
                     }
-                }
-            });
+                });
+            }
         }
 
-    }
+        @Override
+        public void onMessage(@NotNull WebSocket webSocket, @NotNull ByteString bytes) {
+            try {
+                byte[] resultByteArray = bytes.toByteArray();
+                byte[] prefixArray = Arrays.copyOfRange(resultByteArray, 0, 4);
+                int length = (prefixArray[0] << 24) + (prefixArray[1] << 16) + (prefixArray[2] << 8) + prefixArray[3];
+                if (length > 0) {
+                    byte[] jsonArray = Arrays.copyOfRange(resultByteArray, 4, 4 + length);
+                    byte[] audioArray = Arrays.copyOfRange(resultByteArray, 4 + length, resultByteArray.length);
+                    String jsonStr = new String(jsonArray);
+                    AudioResp audioResp = new Gson().fromJson(jsonStr, AudioResp.class);
+                    if (audioResp.getErrcode() == 0) {
+                        if (audioResp.isLastpkg()) {
+                            audioOutPutCallback.onAudioOutput(audioArray, true, audioResp.getTraceid());
+//                                    webSocket.close(1000, "正常关闭");
+                            webSocket.close(1001, null);
+                        } else {
+                            audioOutPutCallback.onAudioOutput(audioArray, false, audioResp.getTraceid());
+                        }
+                    } else {
+                        onError(audioResp.getErrcode() + "", audioResp.getErrmsg(), audioResp.getTraceid());
+                    }
+                } else {
+                    onError(ERROR_WEB_SOCKET, "解析JSON长度出错", "");
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                onError(ERROR_WEB_SOCKET, "非法异常" + e.getMessage(), "");
+            }
+        }
+
+        @Override
+        public void onOpen(@NotNull WebSocket webSocket, @NotNull Response response) {
+            if (enableUseCustomAudioData) {
+                new Handler(Looper.getMainLooper()).post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (openCallback != null) {
+                            openCallback.onResult(true);
+                        }
+                    }
+                });
+            } else {
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (mFilePath.isEmpty()) {
+                            new Handler(Looper.getMainLooper()).post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    speechCallback.canSpeech(); // 可以说话
+                                }
+                            });
+                            isRecording = true;
+                            int bufferSizeInBytes = AudioRecord.getMinBufferSize(SAMPLE_RATE,
+                                    AudioFormat.CHANNEL_IN_MONO,
+                                    AudioFormat.ENCODING_PCM_16BIT);
+                            AudioRecord audioRecord = new AudioRecord(MediaRecorder.AudioSource.DEFAULT,
+                                    SAMPLE_RATE,
+                                    AudioFormat.CHANNEL_IN_MONO,
+                                    AudioFormat.ENCODING_PCM_16BIT,
+                                    bufferSizeInBytes * 2);
+                            audioRecord.startRecording();
+                            Utils.log("SDK 开始录音");
+                            try {
+                                if (!mRecordPCMFilePath.isEmpty()) {
+                                    File file = new File(mRecordPCMFilePath);
+                                    if (file.exists()) {
+                                        file.delete();
+                                    }
+                                    BufferedSink bufferedSink = Okio.buffer(Okio.sink(file));
+                                    while (isRecording) {
+                                        byte[] tempArray = new byte[5120];
+                                        audioRecord.read(tempArray, 0, tempArray.length);
+                                        packageAudioSend(tempArray, false);
+                                        bufferedSink.write(tempArray);
+                                    }
+                                    bufferedSink.close();
+                                    packageAudioSend(new byte[]{}, true);
+                                } else {
+                                    while (isRecording) {
+                                        byte[] tempArray = new byte[5120];
+                                        audioRecord.read(tempArray, 0, tempArray.length);
+                                        packageAudioSend(tempArray, false);
+                                    }
+                                    packageAudioSend(new byte[]{}, true);
+                                }
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            } finally {
+                                Utils.log("SDK 录音结束");
+                                audioRecord.stop();
+                            }
+                        } else {
+                            isRecording = true;
+                            try {
+                                File file = new File(mFilePath);
+                                BufferedSource bufferedSource = Okio.buffer(Okio.source(file));
+                                byte[] readByteArray = bufferedSource.readByteArray();
+                                int numbs = readByteArray.length / 5120;
+                                int remainder = readByteArray.length % 5120;
+                                for (int i = 0; i < numbs; i++) {
+                                    if (!isRecording) {
+                                        packageAudioSend(new byte[]{}, true);
+                                        return;
+                                    }
+                                    byte[] copyOfRange = Arrays.copyOfRange(readByteArray, i * 5120, (i + 1) * 5120);
+                                    if (i == numbs - 1) {
+                                        packageAudioSend(copyOfRange, remainder == 0);
+                                    } else {
+                                        packageAudioSend(copyOfRange, false);
+                                    }
+                                }
+                                if (remainder != 0) {
+                                    byte[] endArray = Arrays.copyOfRange(readByteArray, numbs * 5120, readByteArray.length);
+                                    packageAudioSend(endArray, true);
+                                }
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                                onError(ERROR_READ_FILE, "读文件异常" + e.getMessage(), "");
+                            }
+                        }
+                    }
+                }).start();
+            }
+        }
+    };
 
     @Override
     public void sendAudio(byte[] byteArray, boolean isLast) {
@@ -377,7 +381,7 @@ public class VoiceConvertManager implements VoiceConvertInterface {
             onError(ERROR_NO_TOKEN, "无token，请先调用auth()方法进行鉴权", "");
             return;
         }
-        if (mWebSocket == null) {
+        if (webSocketClient == null || webSocketClient.getWebSocket() == null) {
             throw new IllegalStateException("webSocket is null,请先调用 setWebSocketOnOpen 方法建立连接");
         }
 
@@ -408,9 +412,12 @@ public class VoiceConvertManager implements VoiceConvertInterface {
         arrayPrefix[2] = (byte) (jsonArray.length >> 8 & 0xFF);
         arrayPrefix[3] = (byte) (jsonArray.length & 0xFF);
         byte[] resultBA = ArrayUtils.plus(ArrayUtils.plus(arrayPrefix, jsonArray), audioArray);
-        mWebSocket.send(new ByteString(resultBA));
+        if (webSocketClient != null) {
+            if (webSocketClient.getWebSocket() != null) {
+                webSocketClient.getWebSocket().send(new ByteString(resultBA));
+            }
+        }
     }
-
 
     @Override
     public void setAudioCallBack(AudioOutPutCallback callBack) {
